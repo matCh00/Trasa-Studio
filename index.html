@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080d18">
+  <meta name="description" content="Lokalny kreator rozbudowanych tras Google Maps — układaj dowolną liczbę punktów, zapisuj i eksportuj podróże.">
+  <title>Trasa Studio — kreator tras Google Maps</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="wow.css">
+  <link rel="stylesheet" href="layout-refinement.css">
+  <link rel="stylesheet" href="contrast-fixes.css">
+  <script src="map-preview.js" defer></script>
+  <script src="app.js" defer></script>
+  <script src="wow.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#stopsList">Przejdź do punktów trasy</a>
+  <canvas id="ambientCanvas" aria-hidden="true"></canvas>
+  <div class="ambient-orb orb-one" aria-hidden="true"></div>
+  <div class="ambient-orb orb-two" aria-hidden="true"></div>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="Trasa Studio — strona główna">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span class="brand-copy"><strong>trasa<span>studio</span></strong><small>MAPS ROUTE WORKSHOP</small></span>
+      </a>
+      <div class="topbar-actions">
+        <span class="local-badge"><span class="pulse-dot"></span> Tylko w tej przeglądarce</span>
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Przełącz motyw" title="Przełącz jasny i ciemny motyw">☼</button>
+        <button class="button button-quiet button-small" id="newRouteBtn" type="button">Nowa trasa</button>
+        <button class="button button-primary button-small" id="saveRouteBtn" type="button">Zapisz trasę</button>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="eyebrow-line"></span> TWÓJ PLAN. TWOJA KOLEJNOŚĆ.</div>
+          <h1>Trasy bez <span>ręcznej dłubaniny.</span></h1>
+          <p>Układaj rozbudowane podróże, przestawiaj postoje i generuj link Google Maps w formacie ścieżki <code>/maps/dir/…</code>. Dodawaj tyle punktów, ile potrzebujesz — aplikacja nie narzuca limitu.</p>
+          <div class="hero-capabilities" aria-label="Najważniejsze możliwości"><span class="capability-chip"><span>∞</span> bez limitu punktów</span><span class="capability-chip"><span>↔</span> kolejność pod kontrolą</span><span class="capability-chip"><span>⌘</span> import i eksport</span><span class="capability-chip"><span>◉</span> zapis lokalny</span></div>
+        </div>
+        <div class="hero-stamp" aria-label="Trasa bez limitu punktów">
+          <div class="stamp-number">∞</div>
+          <div class="stamp-label">PUNKTÓW<br>NA TRASĘ</div>
+          <svg viewBox="0 0 120 26" aria-hidden="true"><path d="M2 19 C15 4 23 23 36 11 S58 3 66 15 S87 25 96 10 S109 4 118 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 5"/></svg>
+        </div>
+      </section>
+
+      <section class="command-strip" aria-label="Diagnostyka trasy na żywo">
+        <div class="command-title"><strong>Centrum dowodzenia trasą</strong><small>ROUTE TELEMETRY · LIVE</small></div>
+        <div class="command-telemetry">
+          <div class="telemetry-card"><span class="telemetry-label">Przystanki</span><strong class="telemetry-value" id="telemetryStops">4</strong><small class="telemetry-note" id="telemetryStopsNote">Punktów w trasie</small></div>
+          <div class="telemetry-card"><span class="telemetry-label">Adres URL</span><strong class="telemetry-value" id="telemetryChars">—</strong><small class="telemetry-note" id="telemetryCharsNote">Pomiar długości linku</small><div class="length-track" aria-hidden="true"><span id="telemetryLengthBar"></span></div></div>
+          <div class="telemetry-card"><span class="telemetry-label">Kontrola planu</span><strong class="telemetry-value" id="telemetryHealth">Gotowe</strong><small class="telemetry-note" id="telemetryHealthNote">Sprawdzanie punktów</small></div>
+        </div>
+        <div class="command-actions"><button class="button button-outline button-small" id="focusMapBtn" type="button">Pokaż mapę</button><button class="button button-outline button-small" id="telemetryCopyBtn" type="button">Kopiuj link</button></div>
+      </section>
+
+      <section class="workspace" aria-label="Kreator trasy">
+        <div class="editor-column">
+          <section class="panel route-panel">
+            <div class="panel-heading">
+              <div>
+                <div class="section-kicker">01 / PLAN PODRÓŻY</div>
+                <h2>Twoja trasa</h2>
+              </div>
+              <div class="stop-counter"><strong id="stopCount">4</strong><span>punktów<br>w trasie</span></div>
+            </div>
+
+            <div class="route-fields">
+              <label class="field-label" for="routeName">Nazwa trasy</label>
+              <input id="routeName" class="text-field route-name-field" type="text" maxlength="100" value="Berlin — trasa testowa" placeholder="Np. Berlin — dzień 1">
+              <div class="field-row">
+                <div class="field-group">
+                  <label class="field-label" for="travelMode">Sposób podróży</label>
+                  <div class="select-wrap"><select id="travelMode" class="text-field select-field">
+                    <option value="walking">🚶 Pieszo</option>
+                    <option value="driving">🚗 Samochodem</option>
+                    <option value="bicycling">🚲 Rowerem</option>
+                    <option value="transit">🚆 Transport publiczny</option>
+                  </select><span aria-hidden="true">⌄</span></div>
+                </div>
+                <div class="field-group">
+                  <label class="field-label" for="savedRoutes">Zapisane trasy</label>
+                  <div class="select-wrap"><select id="savedRoutes" class="text-field select-field"><option value="">Brak zapisanych tras</option></select><span aria-hidden="true">⌄</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="stop-list-heading">
+              <div><h3>Punkty w kolejności trasy</h3><p>Przeciągnij uchwyt, aby zmienić kolejność.</p></div>
+              <button class="text-button" type="button" id="reverseStopsBtn" title="Odwróć kolejność wszystkich punktów">Odwróć</button>
+            </div>
+            <ol id="stopsList" class="stops-list" aria-label="Przystanki trasy"></ol>
+
+            <div class="add-stop-row">
+              <div class="add-icon" aria-hidden="true">＋</div>
+              <div class="add-stop-copy"><strong>Dodaj kolejny punkt</strong><small id="remainingCount">Bez limitu punktów na trasę</small></div>
+              <button id="addStopBtn" class="button button-outline button-small" type="button">Dodaj punkt</button>
+            </div>
+            <div class="editor-footnote"><span class="info-icon" aria-hidden="true">i</span><span>Punkty są przekazywane do Google Maps dokładnie w widocznej kolejności. Aplikacja nie optymalizuje trasy automatycznie — kolejność pozostaje pod Twoją kontrolą.</span></div>
+          </section>
+
+          <section class="panel library-panel">
+            <div class="panel-heading compact-heading">
+              <div><div class="section-kicker">02 / TWOJE DANE</div><h2>Import i eksport</h2></div>
+              <span class="local-lock" aria-hidden="true"></span>
+            </div>
+            <p class="panel-description">Zapisuj trasy lokalnie, przenoś je między urządzeniami przez plik JSON lub udostępniaj gotowy link.</p>
+            <div class="action-grid">
+              <button class="action-card" id="importBtn" type="button"><span><strong>Importuj trasę</strong><small>Link Google Maps, JSON lub tekst</small></span></button>
+              <button class="action-card" id="exportJsonBtn" type="button"><span><strong>Eksportuj JSON</strong><small>Trasa lub cała biblioteka</small></span></button>
+              <button class="action-card" id="exportLinkBtn" type="button"><span><strong>Eksportuj link</strong><small>Zapisz adres w pliku TXT</small></span></button>
+              <button class="action-card" id="shareAppBtn" type="button"><span><strong>Link do tej trasy</strong><small>Link do aplikacji z trasą w środku</small></span></button>
+            </div>
+            <input id="importFileInput" type="file" accept=".json,.txt,.md,.url,application/json,text/plain" hidden>
+          </section>
+        </div>
+
+        <div class="map-column">
+          <section class="panel map-panel">
+            <div class="map-panel-top">
+              <div><div class="section-kicker">03 / PODGLĄD NA ŻYWO</div><h2>Mapa trasy</h2></div>
+              <span class="live-label"><span class="live-dot"></span> PODGLĄD</span>
+            </div>
+            <div class="map-status-row"><span id="mapStatusIcon" class="status-icon" aria-hidden="true">↗</span><span id="mapStatusText">Gotowe do budowania trasy</span><span id="urlLength" class="url-length">0 znaków</span></div>
+            <div class="embed-api-settings">
+              <div class="embed-api-heading"><div><strong>Podgląd z kluczem demonstracyjnym Maps</strong><p>Mapa jest renderowana bezpośrednio w aplikacji przez Maps JavaScript API — nie przez zablokowaną stronę Google w iframe. Demo Key obsługuje renderowanie mapy i funkcję Compute Routes w celach prototypowania.</p></div><a href="https://developers.google.com/maps/documentation/javascript/demo-key" target="_blank" rel="noopener noreferrer">Uzyskaj klucz demo ↗</a></div>
+              <div class="embed-api-row"><input id="embedApiKeyInput" class="text-field" type="password" value="AIzaSyBkRBmfm8KK64x8zucW_5qdOCutv4qoxZc" autocomplete="off" spellcheck="false" placeholder="Wklej Maps Demo Key" aria-label="Klucz demonstracyjny Google Maps"><button id="saveEmbedApiKeyBtn" class="button button-dark button-small" type="button">Włącz mapę</button><button id="clearEmbedApiKeyBtn" class="button button-outline button-small" type="button" title="Usuń klucz z tej przeglądarki">Usuń klucz</button></div>
+              <div class="embed-api-footnote">Klucz jest zapisany tylko w localStorage tej przeglądarki. Demo Key służy do testów, ma limity i nie jest kluczem produkcyjnym. Dłuższe trasy są rysowane w kilku odcinkach ze wspólnym punktem granicznym.</div>
+              <div id="embedSegmentControls" class="embed-segment-controls" hidden><button id="embedPrevSegmentBtn" class="button button-outline button-small" type="button">Poprzedni odcinek</button><span id="embedSegmentLabel">Odcinek 1 z 1</span><button id="embedNextSegmentBtn" class="button button-outline button-small" type="button">Następny odcinek</button></div>
+            </div>
+            <div class="map-frame-wrap">
+              <div id="routeMapCanvas" role="application" aria-label="Interaktywna mapa i przebieg trasy"></div>
+              <iframe id="routeMapFrame" title="Ukryta ramka zgodności — nie używa osadzania Google Maps" tabindex="-1" aria-hidden="true"></iframe>
+              <div id="mapPlaceholder" class="map-placeholder visible"><div class="placeholder-route" aria-hidden="true"><span></span><span></span><span></span><span></span></div><strong>Wklej klucz demonstracyjny Maps</strong><p>Uzyskaj Maps Demo Key i wklej go powyżej. Mapa będzie rysowana bezpośrednio w aplikacji, a trasa zachowa kolejność także przy dużej liczbie punktów.</p></div>
+            </div>
+            <div class="map-actions">
+              <button class="button button-primary" id="openMapsBtn" type="button">Otwórz w Google Maps</button>
+              <button class="button button-outline" id="copyLinkBtn" type="button">Kopiuj link trasy</button>
+            </div>
+            <div class="generated-link-box">
+              <div class="link-box-title"><span class="link-box-icon" aria-hidden="true">⌁</span><div><strong>Wygenerowany link</strong><small>Niestandardowy format ścieżki Google Maps Directions</small></div></div>
+              <div class="generated-link-line"><input id="generatedLink" class="link-output" type="text" readonly aria-label="Wygenerowany link Google Maps" placeholder="Link pojawi się po uzupełnieniu punktów"><button id="copyGeneratedBtn" class="icon-button" type="button" title="Kopiuj link" aria-label="Kopiuj wygenerowany link"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg></button></div>
+              <div id="routeWarning" class="route-warning" hidden></div>
+            </div>
+          </section>
+
+          <section class="panel shortlink-panel">
+            <div class="shortlink-top"><div class="shortlink-mark" aria-hidden="true">↗</div><div><h3>Krótki link Google Maps</h3><p>Dodaj skrócony adres z opcji <strong>Udostępnij</strong> w Google Maps i zachowaj go razem z trasą.</p></div></div>
+            <div class="shortlink-input-row"><input id="shortLinkInput" class="text-field" type="url" placeholder="https://maps.app.goo.gl/…" aria-label="Skrócony link Google Maps"><button id="saveShortLinkBtn" class="button button-dark button-small" type="button">Zapisz link</button></div>
+            <div class="shortlink-footnote"><span aria-hidden="true">ⓘ</span><span>Ze względów bezpieczeństwa przeglądarki aplikacja nie może odczytać przycisku „Udostępnij” wewnątrz iframe. Wygeneruj link w otwartej mapie i wklej go tutaj.</span></div>
+            <div id="savedShortLinkRow" class="saved-short-link" hidden><span class="saved-check" aria-hidden="true">✓</span><a id="savedShortLinkAnchor" href="#" target="_blank" rel="noopener noreferrer">Otwórz zapisany krótki link</a><button id="removeShortLinkBtn" class="text-button danger-text" type="button">Usuń</button></div>
+          </section>
+
+          <details class="search-panel panel">
+            <summary><span class="search-summary-icon" aria-hidden="true">⌕</span><span><strong>Znajdź atrakcje na mapie</strong><small>Drugi podgląd Google Maps — opcjonalny</small></span><span class="summary-chevron" aria-hidden="true">⌄</span></summary>
+            <div class="search-content"><form id="mapSearchForm" class="map-search-form"><input id="mapSearchQuery" class="text-field" type="search" placeholder="Np. murale, muzea, punkty widokowe…" aria-label="Szukaj atrakcji w Google Maps"><button class="button button-outline button-small" type="submit">Szukaj</button></form><div class="search-frame-wrap"><iframe id="searchMapFrame" title="Ukryta ramka zgodności — wyszukiwanie otwiera się w nowej karcie" tabindex="-1" aria-hidden="true"></iframe><div id="searchMapPlaceholder" class="search-map-placeholder"><strong>Wyszukiwanie otwiera Google Maps</strong><span>Wpisz nazwę miejsca lub kategorię. Wyniki otworzą się w osobnej karcie, ponieważ Google blokuje zwykłą stronę Maps wewnątrz iframe.</span></div></div><div class="search-footnote">Wyszukiwanie działa bez klucza API; interaktywna mapa trasy korzysta z Maps JavaScript API.</div><a id="openSearchLink" class="external-search-link" href="https://www.google.com/maps/search/?api=1" target="_blank" rel="noopener noreferrer">Otwórz Google Maps w nowej karcie ↗</a></div>
+          </details>
+        </div>
+      </section>
+
+      <section class="bottom-notes">
+        <div class="note-icon" aria-hidden="true">✳</div><div><strong>Ważna uwaga o trasach z dużą liczbą punktów</strong><p>Format <code>/maps/dir/punkt-1/punkt-2/…</code> odtwarza używaną przez Ciebie konstrukcję ścieżki, ale Google nie gwarantuje jej działania dla dowolnej liczby postojów ani w każdym rodzaju osadzenia. Jeśli mapa pokaże tylko listę przystanków, użyj przycisku „Otwórz w Google Maps”. Nie usuwaj punktów — problem może dotyczyć sposobu interpretacji linku przez Google.</p><p>Dokumentacja standardowych Google Maps URLs opisuje limit 9 punktów pośrednich na większości platform i limit długości 2048 znaków. To narzędzie świadomie generuje niestandardowy link ścieżkowy zamiast udawać, że ten limit oficjalnie nie istnieje.</p></div>
+      </section>
+      <footer class="footer"><span>TRASA STUDIO <span class="footer-dot">•</span> WERSJA LOKALNA</span><span>Dane pozostają w pamięci tej przeglądarki.</span></footer>
+    </main>
+  </div>
+
+  <dialog id="importDialog" class="import-dialog">
+    <form method="dialog" class="dialog-close-form"><button class="dialog-close" value="cancel" aria-label="Zamknij okno">×</button></form>
+    <div class="dialog-kicker">PRZENOSZENIE TRASY</div><h2>Importuj trasę</h2><p class="dialog-description">Wklej pełny link Google Maps Directions, dane JSON albo wybierz plik. Skróconych adresów <code>maps.app.goo.gl</code> nie można rozwinąć bez połączenia z Google — możesz je zachować jako krótki link.</p>
+    <label for="importText" class="field-label">Link lub zawartość pliku</label><textarea id="importText" class="text-field import-textarea" rows="6" placeholder="https://www.google.com/maps/dir/... albo { &quot;title&quot;: &quot;Berlin&quot;, &quot;stops&quot;: [...] }"></textarea>
+    <div class="dialog-actions"><button id="chooseImportFileBtn" class="button button-outline" type="button">Wybierz plik</button><button id="confirmImportBtn" class="button button-primary" type="button">Importuj</button></div>
+    <div id="importError" class="import-error" role="status" hidden></div>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

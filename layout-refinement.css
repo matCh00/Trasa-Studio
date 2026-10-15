@@ -1,0 +1,280 @@
+/* Trasa Studio — layout refinement: full-width, carefully responsive workspace. */
+:root {
+  --page-gutter: clamp(18px, 2.35vw, 58px);
+  --refined-panel-radius: 24px;
+}
+
+html { scroll-behavior: smooth; }
+body { min-width: 320px; overflow-x: clip; }
+.app-shell {
+  width: 100%;
+  max-width: 2440px !important;
+  min-height: 100vh;
+  margin-inline: auto;
+  padding-inline: var(--page-gutter);
+  overflow: visible !important;
+  box-sizing: border-box;
+}
+main#top {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 0 clamp(26px, 3vw, 48px);
+  box-sizing: border-box;
+}
+
+/* The navigation spans the entire available page width instead of its old inset. */
+.topbar {
+  width: calc(100% + var(--page-gutter) * 2);
+  min-height: 82px;
+  margin-inline: calc(-1 * var(--page-gutter));
+  padding: 12px var(--page-gutter);
+  gap: 24px;
+  box-sizing: border-box;
+}
+.brand { flex: 0 0 auto; gap: 13px; }
+.brand-mark { width: 43px; height: 43px; flex: 0 0 43px; border-radius: 14px; }
+.brand-copy strong { font-size: 21px; }
+.brand-copy small { margin-top: 3px; font-size: 9px; }
+.topbar-actions { gap: 10px; }
+.topbar-actions .button { min-height: 42px; padding-inline: 15px; }
+.local-badge { padding: 8px 12px; border-radius: 999px; white-space: nowrap; }
+
+/* Wide editorial hero with good balance between copy and the route counter. */
+.hero {
+  width: 100%;
+  min-height: clamp(300px, 24vw, 410px);
+  align-items: center;
+  gap: clamp(32px, 5vw, 96px);
+  margin-top: clamp(22px, 2.5vw, 38px);
+  padding: clamp(34px, 4.3vw, 82px);
+  border-radius: 30px;
+}
+.hero-copy { flex: 1 1 auto; max-width: 1250px; }
+.hero h1 {
+  max-width: 1160px;
+  font-size: clamp(3.4rem, 5.65vw, 7.3rem);
+  line-height: .97;
+  letter-spacing: -.078em;
+}
+.hero-copy > p, .hero p { max-width: 880px; font-size: clamp(1rem, 1.12vw, 1.22rem); line-height: 1.8; }
+.eyebrow { margin-bottom: 24px; font-size: .72rem; }
+.hero-capabilities { gap: 10px; margin-top: 28px; }
+.capability-chip { padding: 10px 14px; font-size: .82rem; }
+.hero-stamp {
+  flex: 0 0 clamp(165px, 14vw, 250px);
+  width: auto;
+  min-width: 0;
+  height: auto;
+  min-height: 225px;
+  padding: clamp(22px, 2.2vw, 38px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  border-radius: 26px;
+}
+.stamp-number { font-size: clamp(4.7rem, 7.1vw, 7.7rem); line-height: .94; }
+.stamp-label { margin-top: 12px; font-size: .8rem; line-height: 1.55; letter-spacing: .12em; }
+.hero-stamp svg { width: 100%; max-width: 160px; margin-top: 22px; }
+
+/* Diagnostics are now readable, spacious and don't squeeze the editor. */
+.command-strip {
+  grid-template-columns: minmax(205px, .72fr) minmax(0, 2fr) auto;
+  gap: 17px;
+  margin-block: 22px 30px;
+  padding: 18px 20px;
+  border-radius: 22px;
+}
+.command-title strong { font-size: .95rem; }
+.command-title small { font-size: .68rem; }
+.command-telemetry { gap: 9px; }
+.telemetry-card { padding: 12px 14px; }
+.telemetry-label { font-size: .65rem; }
+.telemetry-value { font-size: 1.3rem; }
+.telemetry-note { font-size: .72rem; }
+.command-actions { gap: 9px; }
+.command-actions .button { min-height: 40px; padding: 9px 13px; font-size: .76rem; }
+
+/* Main workspace: remove the old 1600px content cap and give the map more room. */
+.workspace {
+  width: 100%;
+  grid-template-columns: minmax(450px, .91fr) minmax(0, 1.09fr);
+  align-items: start;
+  gap: clamp(20px, 2vw, 34px);
+}
+.editor-column, .map-column { gap: clamp(18px, 1.55vw, 28px); min-width: 0; }
+.panel { min-width: 0; border-radius: var(--refined-panel-radius); }
+.route-panel, .library-panel, .map-panel, .shortlink-panel { padding: clamp(22px, 2.05vw, 38px); }
+.panel-heading { gap: 20px; margin-bottom: 25px; }
+.panel-heading h2, .map-panel-top h2 { font-size: clamp(1.55rem, 1.72vw, 2.1rem); }
+.section-kicker { margin-bottom: 10px; font-size: .68rem; }
+.route-fields { margin-top: 22px; }
+.field-label { margin-bottom: 9px; font-size: .78rem; }
+.text-field { min-height: 47px; border-radius: 12px; font-size: .92rem; }
+.route-name-field { padding-inline: 15px; }
+.field-row { gap: 15px; margin-top: 15px; }
+.select-field { font-size: .86rem; }
+.stop-list-heading { gap: 18px; margin-top: 30px; padding-block: 19px 13px; }
+.stop-list-heading h3 { font-size: .98rem; }
+.stop-list-heading p { margin-top: 5px; font-size: .76rem; line-height: 1.5; }
+.stops-list { display: grid; gap: 9px; max-height: none; overflow: visible; padding: 2px; }
+.stop-row {
+  min-height: 76px;
+  grid-template-columns: 20px 30px minmax(0, 1fr) 96px;
+  gap: 9px;
+  padding: 11px 12px;
+  border-radius: 15px;
+}
+.stop-index { width: 28px; height: 28px; border-radius: 9px; font-size: .77rem; }
+.stop-input { min-height: 34px; font-size: .88rem; }
+.stop-caption { font-size: .62rem; line-height: 1.4; }
+.stop-actions { gap: 2px; }
+.stop-action { width: 22px; height: 30px; font-size: .86rem; }
+.add-stop-row { gap: 14px; margin-top: 16px; padding: 16px; border-radius: 15px; }
+.add-icon { width: 41px; height: 41px; border-radius: 12px; flex: 0 0 41px; }
+.add-stop-copy strong { font-size: .88rem; }
+.add-stop-copy small { margin-top: 4px; font-size: .73rem; line-height: 1.5; }
+.editor-footnote { margin-top: 17px; padding: 14px; border-radius: 13px; font-size: .75rem; line-height: 1.65; background: rgba(114,145,200,.055); }
+.action-grid { gap: 8px; }
+.action-card { grid-template-columns: minmax(0,1fr); min-height: 58px; padding: 9px 11px; gap: 0; border-radius: 11px; }
+.action-card > span { display: grid; gap: 2px; min-width: 0; }
+.action-card strong { font-size: .76rem; }
+.action-card small { font-size: .64rem; line-height: 1.35; }
+.action-icon { width: 36px; height: 36px; }
+.panel-description { margin: 0 0 20px; font-size: .85rem; line-height: 1.75; }
+
+/* Map is a first-class part of the app, not a narrow sidebar widget. */
+.map-panel { padding-bottom: clamp(22px, 2vw, 34px); }
+.map-panel-top { margin-bottom: 18px; padding-bottom: 19px; }
+.map-status-row { gap: 10px; margin-bottom: 15px; padding: 11px 13px; border-radius: 12px; font-size: .75rem; }
+.url-length { flex: 0 0 auto; }
+.embed-api-settings { margin-bottom: 16px; padding: clamp(14px, 1.3vw, 21px); border-radius: 15px; }
+.embed-api-heading { align-items: flex-start; gap: 14px; }
+.embed-api-heading strong { font-size: .86rem; }
+.embed-api-heading p { margin-top: 7px; max-width: 760px; font-size: .76rem; line-height: 1.65; }
+.embed-api-heading a { flex: 0 0 auto; font-size: .75rem; }
+.embed-api-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; margin-top: 14px; }
+.embed-api-row .button { min-height: 42px; padding-inline: 12px; }
+.embed-api-footnote { margin-top: 12px; font-size: .71rem; line-height: 1.6; }
+.map-frame-wrap { height: clamp(470px, 56vh, 830px); min-height: 470px; border-radius: 18px; }
+#routeMapCanvas { min-height: 100%; border-radius: 17px; }
+.map-placeholder { padding: clamp(22px, 3vw, 42px); }
+.map-placeholder strong { font-size: 1.12rem; }
+.map-placeholder > p { max-width: 420px; font-size: .84rem; line-height: 1.75; }
+.map-actions { display: flex; gap: 10px; margin-top: 17px; }
+.map-actions .button { min-height: 47px; flex: 1 1 auto; justify-content: center; padding: 11px 14px; }
+.generated-link-box { margin-top: 18px; padding: 15px; border-radius: 15px; }
+.link-box-title { gap: 12px; }
+.link-box-title strong { font-size: .86rem; }
+.link-box-title small { margin-top: 5px; line-height: 1.5; }
+.generated-link-line { gap: 8px; margin-top: 13px; }
+.link-output { min-width: 0; height: 44px; padding-inline: 12px; border-radius: 10px; font-size: .75rem; }
+.icon-button { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 10px; }
+.shortlink-panel { margin-top: 20px; }
+.shortlink-top { gap: 15px; }
+.shortlink-top h3 { font-size: 1.05rem; }
+.shortlink-top p { margin-top: 7px; font-size: .8rem; line-height: 1.65; }
+.shortlink-input-row { gap: 9px; margin-top: 16px; }
+.shortlink-footnote { margin-top: 13px; font-size: .72rem; line-height: 1.65; }
+.search-panel { margin-top: 20px; }
+.search-panel > summary { gap: 14px; padding: 19px 21px; }
+.search-content { padding: 19px 21px 22px; }
+.search-map-placeholder { min-height: 140px; padding: 20px; }
+.bottom-notes { margin-top: 30px; padding: clamp(20px, 2.2vw, 34px); gap: 18px; border-radius: 20px; }
+.bottom-notes p { max-width: 1700px; font-size: .8rem; line-height: 1.8; }
+.footer { gap: 18px; padding-block: 25px 32px; font-size: .72rem; }
+
+/* Mid-sized laptops: stack before either column becomes cramped. */
+@media (max-width: 1120px) {
+  .workspace { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .editor-column, .map-column { gap: 20px; }
+  .hero { min-height: 0; }
+  .map-frame-wrap { height: clamp(440px, 58vh, 680px); min-height: 440px; }
+  .command-strip { grid-template-columns: minmax(170px, .7fr) minmax(0, 2fr); }
+  .command-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}
+@media (max-width: 760px) {
+  :root { --page-gutter: 17px; }
+  .topbar { min-height: 70px; gap: 10px; padding-block: 10px; }
+  .brand { gap: 9px; }
+  .brand-mark { width: 36px; height: 36px; flex-basis: 36px; border-radius: 12px; }
+  .brand-copy strong { font-size: 17px; }
+  .brand-copy small { font-size: 7px; letter-spacing: 1px; }
+  .topbar-actions { justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+  .topbar-actions .button { min-height: 35px; padding: 7px 9px; font-size: 10px; }
+  .local-badge { display: none; }
+  .theme-toggle { min-width: 35px; min-height: 35px; }
+  .hero { display: flex; flex-direction: column; align-items: stretch; min-height: 0; gap: 19px; margin-top: 16px; padding: 25px 21px; border-radius: 22px; }
+  .hero-copy { width: 100%; }
+  .hero h1 { max-width: none; font-size: clamp(2.55rem, 11.2vw, 4.2rem); }
+  .hero-copy > p, .hero p { font-size: .92rem; line-height: 1.7; }
+  .eyebrow { margin-bottom: 16px; font-size: .59rem; letter-spacing: .12em; }
+  .hero-capabilities { margin-top: 18px; gap: 6px; }
+  .capability-chip { padding: 7px 9px; font-size: .66rem; }
+  .hero-stamp { display: grid; grid-template-columns: auto 1fr; align-items: center; align-self: stretch; width: auto; min-width: 0; min-height: 0; height: auto; padding: 13px 16px; border-radius: 15px; gap: 0 15px; }
+  .stamp-number { grid-row: span 2; font-size: 3.15rem; }
+  .stamp-label { margin-top: 0; font-size: .67rem; }
+  .hero-stamp svg { grid-column: 2; width: 94px; margin-top: 5px; }
+  .command-strip { grid-template-columns: minmax(0, 1fr); padding: 13px; gap: 12px; margin: 12px 0 18px; border-radius: 16px; }
+  .command-title { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .command-title strong { font-size: .81rem; }
+  .command-title small { font-size: .54rem; letter-spacing: .07em; }
+  .command-telemetry { gap: 5px; }
+  .telemetry-card { padding: 9px 7px; border-radius: 10px; }
+  .telemetry-label { font-size: .5rem; letter-spacing: .025em; }
+  .telemetry-value { font-size: .96rem; }
+  .telemetry-note { font-size: .56rem; }
+  .command-actions { display: grid; grid-template-columns: 1fr 1fr; grid-column: auto; }
+  .command-actions .button { min-width: 0; justify-content: center; padding-inline: 8px; font-size: .68rem; }
+  .route-panel, .library-panel, .map-panel, .shortlink-panel { padding: 16px; }
+  .panel { border-radius: 18px; }
+  .panel-heading { margin-bottom: 19px; gap: 10px; }
+  .panel-heading h2, .map-panel-top h2 { font-size: 1.4rem; }
+  .section-kicker { font-size: .58rem; }
+  .field-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .stop-list-heading { align-items: flex-start; gap: 8px; margin-top: 22px; }
+  .stop-list-heading h3 { font-size: .88rem; }
+  .stop-list-heading p { max-width: 215px; font-size: .67rem; }
+  .stop-row { grid-template-columns: 14px 25px minmax(0,1fr) 80px; gap: 5px; min-height: 67px; padding: 8px 7px; border-radius: 12px; }
+  .stop-index { width: 24px; height: 24px; font-size: .69rem; }
+  .stop-input { min-height: 31px; font-size: .78rem; }
+  .stop-caption { font-size: .55rem; }
+  .stop-actions { gap: 0; }
+  .stop-action { width: 19px; height: 27px; font-size: .77rem; }
+  .add-stop-row { display: grid; grid-template-columns: 35px minmax(0,1fr); gap: 10px; padding: 12px; }
+  .add-icon { grid-row: span 2; width: 35px; height: 35px; }
+  .add-stop-row .button { grid-column: 2; justify-self: start; }
+  .action-grid { grid-template-columns: minmax(0,1fr); }
+  .action-card { min-height: 55px; padding: 9px 11px; }
+  .embed-api-settings { padding: 12px; }
+  .embed-api-heading { flex-direction: column; gap: 9px; }
+  .embed-api-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .embed-api-row #clearEmbedApiKeyBtn { grid-column: 2; }
+  .embed-api-row #embedApiKeyInput { grid-column: 1 / -1; }
+  .map-frame-wrap { height: 400px; min-height: 360px; }
+  .map-actions { flex-direction: column; }
+  .map-status-row { flex-wrap: wrap; align-items: flex-start; }
+  .url-length { margin-left: auto; }
+  .generated-link-box { padding: 12px; }
+  .shortlink-input-row { display: grid; grid-template-columns: minmax(0,1fr); }
+  .shortlink-input-row .button { min-height: 42px; justify-content: center; }
+  .bottom-notes { margin-top: 19px; padding: 16px; gap: 11px; }
+  .bottom-notes p { font-size: .73rem; }
+  .footer { align-items: flex-start; flex-direction: column; gap: 8px; }
+}
+@media (max-width: 390px) {
+  :root { --page-gutter: 12px; }
+  .brand-copy small { display: none; }
+  .topbar-actions .button { padding-inline: 7px; font-size: 9px; }
+  .command-title { align-items: flex-start; flex-direction: column; }
+  .telemetry-label { font-size: .46rem; }
+  .telemetry-value { font-size: .88rem; }
+  .stop-row { grid-template-columns: 12px 22px minmax(0,1fr) 70px; gap: 4px; padding-inline: 5px; }
+  .stop-index { width: 21px; height: 21px; }
+  .stop-action { width: 17px; font-size: .72rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .reveal-on-scroll { opacity: 1; transform: none; }
+}
