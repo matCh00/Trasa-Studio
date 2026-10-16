@@ -37,7 +37,7 @@
       <section class="hero">
         <div class="hero-copy">
           <div class="eyebrow"><span class="eyebrow-line"></span> TWÓJ PLAN. TWOJA KOLEJNOŚĆ.</div>
-          <h1>Trasy bez <span>ręcznej dłubaniny.</span></h1>
+          <h1>Zaplanuj podróż <span>po swojemu.</span></h1>
           <p>Układaj rozbudowane podróże, przestawiaj postoje i generuj link Google Maps w formacie ścieżki <code>/maps/dir/…</code>. Dodawaj tyle punktów, ile potrzebujesz — aplikacja nie narzuca limitu.</p>
           <div class="hero-capabilities" aria-label="Najważniejsze możliwości"><span class="capability-chip"><span>∞</span> bez limitu punktów</span><span class="capability-chip"><span>↔</span> kolejność pod kontrolą</span><span class="capability-chip"><span>⌘</span> import i eksport</span><span class="capability-chip"><span>◉</span> zapis lokalny</span></div>
         </div>
@@ -66,12 +66,12 @@
                 <div class="section-kicker">01 / PLAN PODRÓŻY</div>
                 <h2>Twoja trasa</h2>
               </div>
-              <div class="stop-counter"><strong id="stopCount">4</strong><span>punktów<br>w trasie</span></div>
+              <div class="stop-counter"><strong id="stopCount">0</strong><span>punktów<br>w trasie</span></div>
             </div>
 
             <div class="route-fields">
               <label class="field-label" for="routeName">Nazwa trasy</label>
-              <input id="routeName" class="text-field route-name-field" type="text" maxlength="100" value="Berlin — trasa testowa" placeholder="Np. Berlin — dzień 1">
+              <input id="routeName" class="text-field route-name-field" type="text" maxlength="100" value="Moja trasa" placeholder="Np. Berlin — dzień 1">
               <div class="field-row">
                 <div class="field-group">
                   <label class="field-label" for="travelMode">Sposób podróży</label>
@@ -90,7 +90,7 @@
             </div>
 
             <div class="stop-list-heading">
-              <div><h3>Punkty w kolejności trasy</h3><p>Przeciągnij uchwyt, aby zmienić kolejność.</p></div>
+              <div><h3>Punkty w kolejności trasy</h3><p>Przeciągnij uchwyt, aby zmienić kolejność — także dotykiem.</p></div>
               <button class="text-button" type="button" id="reverseStopsBtn" title="Odwróć kolejność wszystkich punktów">Odwróć</button>
             </div>
             <ol id="stopsList" class="stops-list" aria-label="Przystanki trasy"></ol>
@@ -129,7 +129,7 @@
             <div class="embed-api-settings">
               <div class="embed-api-heading"><div><strong>Podgląd z kluczem demonstracyjnym Maps</strong><p>Mapa jest renderowana bezpośrednio w aplikacji przez Maps JavaScript API — nie przez zablokowaną stronę Google w iframe. Demo Key obsługuje renderowanie mapy i funkcję Compute Routes w celach prototypowania.</p></div><a href="https://developers.google.com/maps/documentation/javascript/demo-key" target="_blank" rel="noopener noreferrer">Uzyskaj klucz demo ↗</a></div>
               <div class="embed-api-row"><input id="embedApiKeyInput" class="text-field" type="password" value="AIzaSyBkRBmfm8KK64x8zucW_5qdOCutv4qoxZc" autocomplete="off" spellcheck="false" placeholder="Wklej Maps Demo Key" aria-label="Klucz demonstracyjny Google Maps"><button id="saveEmbedApiKeyBtn" class="button button-dark button-small" type="button">Włącz mapę</button><button id="clearEmbedApiKeyBtn" class="button button-outline button-small" type="button" title="Usuń klucz z tej przeglądarki">Usuń klucz</button></div>
-              <div class="embed-api-footnote">Klucz jest zapisany tylko w localStorage tej przeglądarki. Demo Key służy do testów, ma limity i nie jest kluczem produkcyjnym. Dłuższe trasy są rysowane w kilku odcinkach ze wspólnym punktem granicznym.</div>
+              <div class="embed-api-footnote">Klucz jest zapisany tylko w localStorage tej przeglądarki. Demo Key służy do testów, ma limity i nie jest kluczem produkcyjnym. Dłuższe trasy są rysowane w kilku odcinkach ze wspólnym punktem granicznym, a znaczniki wszystkich punktów są dodawane niezależnie od obliczania przebiegu.</div>
               <div id="embedSegmentControls" class="embed-segment-controls" hidden><button id="embedPrevSegmentBtn" class="button button-outline button-small" type="button">Poprzedni odcinek</button><span id="embedSegmentLabel">Odcinek 1 z 1</span><button id="embedNextSegmentBtn" class="button button-outline button-small" type="button">Następny odcinek</button></div>
             </div>
             <div class="map-frame-wrap">
@@ -151,7 +151,7 @@
           <section class="panel shortlink-panel">
             <div class="shortlink-top"><div class="shortlink-mark" aria-hidden="true">↗</div><div><h3>Krótki link Google Maps</h3><p>Dodaj skrócony adres z opcji <strong>Udostępnij</strong> w Google Maps i zachowaj go razem z trasą.</p></div></div>
             <div class="shortlink-input-row"><input id="shortLinkInput" class="text-field" type="url" placeholder="https://maps.app.goo.gl/…" aria-label="Skrócony link Google Maps"><button id="saveShortLinkBtn" class="button button-dark button-small" type="button">Zapisz link</button></div>
-            <div class="shortlink-footnote"><span aria-hidden="true">ⓘ</span><span>Ze względów bezpieczeństwa przeglądarki aplikacja nie może odczytać przycisku „Udostępnij” wewnątrz iframe. Wygeneruj link w otwartej mapie i wklej go tutaj.</span></div>
+            <div class="shortlink-footnote"><span class="info-icon" aria-hidden="true">i</span><span>Ze względów bezpieczeństwa przeglądarki aplikacja nie może odczytać przycisku „Udostępnij” wewnątrz iframe. Wygeneruj link w otwartej mapie i wklej go tutaj.</span></div>
             <div id="savedShortLinkRow" class="saved-short-link" hidden><span class="saved-check" aria-hidden="true">✓</span><a id="savedShortLinkAnchor" href="#" target="_blank" rel="noopener noreferrer">Otwórz zapisany krótki link</a><button id="removeShortLinkBtn" class="text-button danger-text" type="button">Usuń</button></div>
           </section>
 

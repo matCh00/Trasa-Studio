@@ -26,20 +26,17 @@
 
   let state = {
     id: null,
-    title: 'Berlin — trasa testowa',
+    title: 'Moja trasa',
     mode: 'walking',
-    stops: [
-      'Lichtenberg, Weitlingstraße 22, 10317 Berlin, Germany',
-      'Molecule Men, An den Treptowers 1, 12435 Berlin, Germany',
-      'Holzmarkt 25, Holzmarktstraße 25, 10243 Berlin, Germany',
-      'East Side Gallery, Mühlenstraße, 10243 Berlin, Germany'
-    ],
+    stops: [],
+    stopLocations: [],
     shortLink: ''
   };
   let savedRoutes = [];
   let renderTimer = null;
   let toastTimer = null;
   let draggedIndex = null;
+  let pointerDrag = null;
   let embedApiKey = '';
   let previewSegmentIndex = 0;
 
@@ -49,6 +46,16 @@
   function completeStops() { return state.stops.map(v => String(v || '').trim()); }
   function hasBlankStops() { return completeStops().some(v => !v); }
   function validStops() { return completeStops().filter(Boolean); }
+  function stopLabel(index) {
+    let value = index + 1;
+    let label = '';
+    while (value > 0) {
+      value -= 1;
+      label = String.fromCharCode(65 + value % 26) + label;
+      value = Math.floor(value / 26);
+    }
+    return label;
+  }
 
   // Mirrors the custom Maps path format discussed in this session.
   // This is deliberately not the documented ?api=1&waypoints=... format.
@@ -168,7 +175,7 @@
       const stops = [origin, ...waypoints, destination].map(s => s.trim()).filter(Boolean);
       if (stops.length < 2) throw new Error('Link zawiera mniej niż dwa rozpoznane punkty.');
       const modeName = url.searchParams.get('travelmode') || 'walking';
-      return { title: 'Zaimportowana trasa', stops, mode: MODE_CODES[modeName] !== undefined ? modeName : 'walking', shortLink: '' };
+      return { title: 'Zaimportowana trasa', stops, stopLocations: [], mode: MODE_CODES[modeName] !== undefined ? modeName : 'walking', shortLink: '' };
     }
 
     const marker = '/maps/dir/';
@@ -177,15 +184,29 @@
     let path = url.pathname.slice(markerIndex + marker.length);
     const segments = path.split('/');
     const dataIndex = segments.findIndex(segment => segment.startsWith('data='));
-    const routeSegments = (dataIndex >= 0 ? segments.slice(0, dataIndex) : segments).filter(Boolean);
+    const routeSegments = (dataIndex >= 0 ? segments.slice(0, dataIndex) : segments)
+      .filter(segment => segment && !/^@-?\d/.test(segment));
     const stops = routeSegments.map(decodePathPlace).map(s => s.trim()).filter(Boolean);
     if (stops.length < 2) throw new Error('Nie udało się odczytać co najmniej dwóch punktów z linku. Upewnij się, że to pełna trasa w formacie /maps/dir/punkt-1/punkt-2/… .');
 
     let mode = 'walking';
-    const routeData = segments.find(segment => segment.startsWith('data=')) || '';
+    let routeData = `${url.pathname}${url.search}`;
+    try { routeData = decodeURIComponent(routeData); } catch { /* Keep the URL's original encoding if it is malformed. */ }
+    const stopLocations = [];
+    const coordinatePattern = /!1d(-?\d+(?:\.\d+)?)!2d(-?\d+(?:\.\d+)?)(?![\d.])|!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)(?![\d.])/g;
+    for (const match of routeData.matchAll(coordinatePattern)) {
+      const location = match[1]
+        ? { lat: Number(match[2]), lng: Number(match[1]) }
+        : { lat: Number(match[3]), lng: Number(match[4]) };
+      if (Number.isFinite(location.lat) && Number.isFinite(location.lng)
+        && Math.abs(location.lat) <= 90 && Math.abs(location.lng) <= 180) {
+        stopLocations.push(location);
+      }
+    }
     const codeMatch = routeData.match(/!3e([0-3])/);
     if (codeMatch) mode = ({ '0': 'driving', '1': 'bicycling', '2': 'walking', '3': 'transit' })[codeMatch[1]] || 'walking';
-    return { title: 'Zaimportowana trasa', stops, mode, shortLink: '' };
+    const alignedLocations = Array.from({ length: stops.length }, (_, index) => stopLocations[index] || null);
+    return { title: 'Zaimportowana trasa', stops, stopLocations: alignedLocations, mode, shortLink: '' };
   }
 
   function normaliseRoute(obj) {
@@ -200,8 +221,19 @@
       return '';
     }).filter(Boolean);
     if (stops.length < 2) throw new Error('Trasa musi zawierać co najmniej dwa niepuste punkty.');
+    const sourceLocations = Array.isArray(obj.stopLocations) ? obj.stopLocations : [];
+    const stopLocations = Array.from({ length: stops.length }, (_, index) => {
+      const location = sourceLocations[index];
+      if (!location || location.lat === null || location.lng === null
+        || location.lat === undefined || location.lng === undefined) return null;
+      const lat = Number(location.lat);
+      const lng = Number(location.lng);
+      return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+        ? { lat, lng }
+        : null;
+    });
     const mode = ['walking', 'driving', 'bicycling', 'transit'].includes(obj.mode) ? obj.mode : 'walking';
-    return { id: obj.id || null, title: cleanTitle(obj.title || obj.name || 'Zaimportowana trasa'), stops, mode, shortLink: typeof obj.shortLink === 'string' ? obj.shortLink : '' };
+    return { id: obj.id || null, title: cleanTitle(obj.title || obj.name || 'Zaimportowana trasa'), stops, stopLocations, mode, shortLink: typeof obj.shortLink === 'string' ? obj.shortLink : '' };
   }
 
   function routeExportObject(route = state) {
@@ -211,6 +243,7 @@
       title: cleanTitle(route.title),
       mode: route.mode || 'walking',
       stops: route.stops.map(s => String(s || '').trim()),
+      stopLocations: Array.isArray(route.stopLocations) ? route.stopLocations : [],
       googleMapsUrl: route === state ? buildDirectionsUrl() : buildDirectionsUrlFor(route),
       shortLink: route.shortLink || '',
       exportedAt: new Date().toISOString()
@@ -234,8 +267,16 @@
       const parsedRoutes = JSON.parse(localStorage.getItem(STORAGE_ROUTES) || '[]');
       if (Array.isArray(parsedRoutes)) savedRoutes = parsedRoutes.filter(r => r && Array.isArray(r.stops)).slice(0, 300);
       const draft = JSON.parse(localStorage.getItem(STORAGE_DRAFT) || 'null');
-      if (draft && Array.isArray(draft.stops)) {
-        state = { id: draft.id || null, title: cleanTitle(draft.title), mode: ['walking', 'driving', 'bicycling', 'transit'].includes(draft.mode) ? draft.mode : 'walking', stops: draft.stops.map(s => String(s || '')), shortLink: typeof draft.shortLink === 'string' ? draft.shortLink : '' };
+      const isLegacyStarterRoute = draft && draft.title === 'Berlin — trasa testowa'
+        && JSON.stringify(draft.stops) === JSON.stringify([
+          'Lichtenberg, Weitlingstraße 22, 10317 Berlin, Germany',
+          'Molecule Men, An den Treptowers 1, 12435 Berlin, Germany',
+          'Holzmarkt 25, Holzmarktstraße 25, 10243 Berlin, Germany',
+          'East Side Gallery, Mühlenstraße, 10243 Berlin, Germany'
+        ]);
+      if (draft && Array.isArray(draft.stops) && !isLegacyStarterRoute) {
+        const restoredStops = draft.stops.map(s => String(s || ''));
+        state = { id: draft.id || null, title: cleanTitle(draft.title), mode: ['walking', 'driving', 'bicycling', 'transit'].includes(draft.mode) ? draft.mode : 'walking', stops: restoredStops, stopLocations: Array.from({ length: restoredStops.length }, (_, index) => draft.stopLocations?.[index] || null), shortLink: typeof draft.shortLink === 'string' ? draft.shortLink : '' };
       }
     } catch { savedRoutes = []; }
   }
@@ -263,22 +304,24 @@
 
   function renderStops(focusLast = false) {
     els.stopsList.replaceChildren();
+    els.stopsList.dataset.stopLocations = JSON.stringify(Array.isArray(state.stopLocations) ? state.stopLocations : []);
     state.stops.forEach((stop, index) => {
       const row = document.createElement('li');
       row.className = `stop-row${index === 0 ? ' is-start' : ''}${index === state.stops.length - 1 ? ' is-end' : ''}`;
       row.dataset.index = String(index);
       row.draggable = false;
 
+      const label = stopLabel(index);
       const drag = document.createElement('button');
       drag.type = 'button'; drag.className = 'drag-handle'; drag.textContent = '⠿';
-      drag.title = 'Przeciągnij, aby zmienić kolejność'; drag.setAttribute('aria-label', `Uchwyt do zmiany kolejności punktu ${index + 1}`);
+      drag.title = 'Przeciągnij, aby zmienić kolejność'; drag.setAttribute('aria-label', `Uchwyt do zmiany kolejności punktu ${label}`);
       drag.draggable = true; drag.dataset.dragHandle = 'true';
-      const number = document.createElement('span'); number.className = 'stop-index'; number.textContent = String(index + 1);
+      const number = document.createElement('span'); number.className = 'stop-index'; number.textContent = label;
       const main = document.createElement('div'); main.className = 'stop-main';
       const input = document.createElement('input'); input.className = 'text-field stop-input'; input.type = 'text'; input.value = stop;
       input.maxLength = 300; input.dataset.stopInput = 'true'; input.dataset.index = String(index);
       input.placeholder = index === 0 ? 'Adres punktu początkowego' : index === state.stops.length - 1 ? 'Adres punktu końcowego' : 'Nazwa atrakcji lub adres';
-      input.setAttribute('aria-label', `Punkt ${index + 1}`);
+      input.setAttribute('aria-label', `Punkt ${label}`);
       const caption = document.createElement('small'); caption.className = 'stop-caption';
       caption.textContent = index === 0 ? 'START · PUNKT POCZĄTKOWY' : index === state.stops.length - 1 ? 'META · PUNKT KOŃCOWY' : 'PRZYSTANEK POŚREDNI';
       main.append(input, caption);
@@ -399,6 +442,79 @@
     persistDraft();
   }
 
+  function renderStopChange(oldIndexForNewIndex, { focusLast = false, removedIndex = -1 } = {}) {
+    const previousRows = Array.from(els.stopsList.children);
+    const previousRects = previousRows.map(row => row.getBoundingClientRect());
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let removedClone = null;
+
+    if (!reduceMotion && removedIndex >= 0 && previousRows[removedIndex]) {
+      const rect = previousRects[removedIndex];
+      removedClone = previousRows[removedIndex].cloneNode(true);
+      removedClone.setAttribute('aria-hidden', 'true');
+      Object.assign(removedClone.style, {
+        position: 'fixed', left: `${rect.left}px`, top: `${rect.top}px`,
+        width: `${rect.width}px`, height: `${rect.height}px`, margin: '0',
+        pointerEvents: 'none', zIndex: '10'
+      });
+      document.body.append(removedClone);
+      removedClone.animate(
+        [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'translateX(20px) scale(.96)' }],
+        { duration: 220, easing: 'ease-in', fill: 'forwards' }
+      ).onfinish = () => removedClone.remove();
+    }
+
+    renderAll({ focusLast });
+    if (reduceMotion) return;
+    const newRows = Array.from(els.stopsList.children);
+    newRows.forEach((row, newIndex) => {
+      const oldIndex = oldIndexForNewIndex[newIndex];
+      const newRect = row.getBoundingClientRect();
+      if (oldIndex === undefined || oldIndex < 0 || !previousRects[oldIndex]) {
+        row.animate(
+          [{ opacity: 0, transform: 'translateY(10px) scale(.98)' }, { opacity: 1, transform: 'none' }],
+          { duration: 240, easing: 'cubic-bezier(.2,.75,.2,1)' }
+        );
+        return;
+      }
+      const oldRect = previousRects[oldIndex];
+      const deltaX = oldRect.left - newRect.left;
+      const deltaY = oldRect.top - newRect.top;
+      if (deltaX || deltaY) {
+        row.animate(
+          [{ transform: `translate(${deltaX}px, ${deltaY}px)` }, { transform: 'translate(0, 0)' }],
+          { duration: 280, easing: 'cubic-bezier(.2,.75,.2,1)' }
+        );
+      }
+    });
+  }
+
+  function reorderStop(source, destination) {
+    if (source === destination || source < 0 || destination < 0
+      || source >= state.stops.length || destination >= state.stops.length) return;
+    const oldIndexForNewIndex = state.stops.map((_, index) => {
+      if (index === destination) return source;
+      if (source < destination && index >= source && index < destination) return index + 1;
+      if (source > destination && index > destination && index <= source) return index - 1;
+      return index;
+    });
+    const [item] = state.stops.splice(source, 1);
+    state.stops.splice(destination, 0, item);
+    if (Array.isArray(state.stopLocations) && state.stopLocations.length === oldIndexForNewIndex.length) {
+      const [location] = state.stopLocations.splice(source, 1);
+      state.stopLocations.splice(destination, 0, location || null);
+    }
+    renderStopChange(oldIndexForNewIndex);
+  }
+
+  function clearPointerDrag() {
+    if (!pointerDrag) return;
+    const { handle, pointerId } = pointerDrag;
+    if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+    pointerDrag = null;
+    els.stopsList.querySelectorAll('.dragging,.drag-target').forEach(row => row.classList.remove('dragging', 'drag-target'));
+  }
+
   function renderAll({ focusLast = false, immediate = true } = {}) {
     els.routeName.value = state.title;
     els.travelMode.value = state.mode;
@@ -451,7 +567,7 @@
     state.title = cleanTitle(els.routeName.value);
     state.mode = els.travelMode.value;
     let route = state.id ? savedRoutes.find(r => r.id === state.id) : null;
-    const payload = { id: state.id || uuid(), title: state.title, mode: state.mode, stops: [...state.stops], shortLink: state.shortLink || '', updatedAt: new Date().toISOString() };
+    const payload = { id: state.id || uuid(), title: state.title, mode: state.mode, stops: [...state.stops], stopLocations: [...(state.stopLocations || [])], shortLink: state.shortLink || '', updatedAt: new Date().toISOString() };
     if (route) Object.assign(route, payload);
     else { route = payload; savedRoutes.unshift(route); }
     state.id = route.id;
@@ -463,21 +579,20 @@
   function loadSavedRoute(id) {
     const route = savedRoutes.find(r => r.id === id);
     if (!route) return;
-    state = { id: route.id, title: cleanTitle(route.title), mode: route.mode || 'walking', stops: route.stops.map(s => String(s || '')), shortLink: route.shortLink || '' };
+    state = { id: route.id, title: cleanTitle(route.title), mode: route.mode || 'walking', stops: route.stops.map(s => String(s || '')), stopLocations: Array.isArray(route.stopLocations) ? [...route.stopLocations] : [], shortLink: route.shortLink || '' };
     renderAll(); showToast(`Wczytano trasę „${state.title}”.`);
   }
 
   function newRoute() {
-    state = { id: null, title: 'Nowa trasa', mode: 'walking', stops: ['', ''], shortLink: '' };
-    renderAll({ focusLast: true });
-    showToast('Utworzono nową trasę. Wpisz pierwszy i ostatni punkt.');
+    state = { id: null, title: 'Nowa trasa', mode: 'walking', stops: [], stopLocations: [], shortLink: '' };
+    renderAll();
+    showToast('Utworzono pustą trasę. Dodaj pierwszy punkt, aby rozpocząć.');
   }
 
   function moveStop(index, offset) {
     const destination = index + offset;
     if (destination < 0 || destination >= state.stops.length) return;
-    const [item] = state.stops.splice(index, 1); state.stops.splice(destination, 0, item);
-    renderAll();
+    reorderStop(index, destination);
   }
 
   function handleStopAction(event) {
@@ -488,25 +603,36 @@
     if (button.dataset.action === 'move-up') moveStop(index, -1);
     if (button.dataset.action === 'move-down') moveStop(index, 1);
     if (button.dataset.action === 'duplicate') {
+      const oldIndexForNewIndex = state.stops.map((_, oldIndex) => oldIndex <= index ? oldIndex : oldIndex + 1);
+      oldIndexForNewIndex.splice(index + 1, 0, -1);
       state.stops.splice(index + 1, 0, state.stops[index]);
-      renderAll({ focusLast: false });
+      if (Array.isArray(state.stopLocations) && state.stopLocations.length === oldIndexForNewIndex.length - 1) {
+        state.stopLocations.splice(index + 1, 0, state.stopLocations[index] || null);
+      }
+      renderStopChange(oldIndexForNewIndex);
       const copiedRow = els.stopsList.querySelectorAll('.stop-row')[index + 1];
       if (copiedRow) { const input = copiedRow.querySelector('.stop-input'); input.focus(); input.select(); }
     }
     if (button.dataset.action === 'remove') {
+      const hadAlignedLocations = Array.isArray(state.stopLocations) && state.stopLocations.length === state.stops.length;
       state.stops.splice(index, 1);
-      if (!state.stops.length) state.stops = [''];
-      renderAll();
+      if (hadAlignedLocations) state.stopLocations.splice(index, 1);
+      const oldIndexForNewIndex = state.stops.map((_, newIndex) => newIndex < index ? newIndex : newIndex + 1);
+      renderStopChange(oldIndexForNewIndex, { removedIndex: index });
     }
   }
 
   function addStop() {
-    state.stops.push(''); renderAll({ focusLast: true });
+    const oldIndexForNewIndex = state.stops.map((_, index) => index).concat(-1);
+    const hadAlignedLocations = Array.isArray(state.stopLocations) && state.stopLocations.length === state.stops.length;
+    state.stops.push('');
+    if (hadAlignedLocations) state.stopLocations.push(null);
+    renderStopChange(oldIndexForNewIndex, { focusLast: true });
   }
 
   function routeAsShareUrl() {
     if (window.location.protocol === 'file:' || state.stops.length < 2 || hasBlankStops()) return ''; 
-    const payload = { title: state.title, mode: state.mode, stops: state.stops, shortLink: state.shortLink || '' };
+    const payload = { title: state.title, mode: state.mode, stops: state.stops, stopLocations: state.stopLocations || [], shortLink: state.shortLink || '' };
     const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
     return `${window.location.href.split('#')[0]}#trip=${encoded}`;
   }
@@ -519,7 +645,7 @@
       const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
       const json = decodeURIComponent(escape(atob(padded)));
       const parsed = normaliseRoute(JSON.parse(json));
-      state = { id: null, title: parsed.title || 'Udostępniona trasa', mode: parsed.mode, stops: parsed.stops, shortLink: parsed.shortLink || '' };
+      state = { id: null, title: parsed.title || 'Udostępniona trasa', mode: parsed.mode, stops: parsed.stops, stopLocations: parsed.stopLocations || [], shortLink: parsed.shortLink || '' };
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
       return true;
     } catch (error) { showToast(`Nie udało się otworzyć linku aplikacji: ${error.message}`, true); return false; }
@@ -554,7 +680,7 @@
         els.importError.hidden = true; els.importDialog.close();
         showToast(`Zaimportowano ${parsed.libraryImported} tras do biblioteki.`); return;
       }
-      state = { id: null, title: cleanTitle(parsed.title || 'Zaimportowana trasa'), mode: parsed.mode || 'walking', stops: parsed.stops, shortLink: parsed.shortLink || '' };
+      state = { id: null, title: cleanTitle(parsed.title || 'Zaimportowana trasa'), mode: parsed.mode || 'walking', stops: parsed.stops, stopLocations: parsed.stopLocations || [], shortLink: parsed.shortLink || '' };
       renderAll(); els.importError.hidden = true; els.importDialog.close();
       showToast(`Zaimportowano ${state.stops.length} punktów.`);
     } catch (error) {
@@ -570,11 +696,43 @@
       const input = event.target.closest('[data-stop-input]');
       if (!input) return;
       const index = Number(input.dataset.index);
-      if (index >= 0 && index < state.stops.length) state.stops[index] = input.value;
+      if (index >= 0 && index < state.stops.length) {
+        state.stops[index] = input.value;
+        if (Array.isArray(state.stopLocations) && state.stopLocations.length === state.stops.length) state.stopLocations[index] = null;
+        els.stopsList.dataset.stopLocations = JSON.stringify(state.stopLocations || []);
+      }
       updateRoutePreview(); persistDraft();
     });
     els.stopsList.addEventListener('change', () => { updateRoutePreview({ immediate: true }); persistDraft(); });
     els.stopsList.addEventListener('click', handleStopAction);
+    els.stopsList.addEventListener('pointerdown', event => {
+      if (!['touch', 'pen'].includes(event.pointerType)) return;
+      const handle = event.target.closest('[data-drag-handle]');
+      const row = handle && handle.closest('.stop-row');
+      if (!row) return;
+      event.preventDefault();
+      const index = Number(row.dataset.index);
+      pointerDrag = { handle, pointerId: event.pointerId, source: index, destination: index };
+      handle.setPointerCapture(event.pointerId);
+      row.classList.add('dragging');
+    });
+    els.stopsList.addEventListener('pointermove', event => {
+      if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      const target = document.elementFromPoint(event.clientX, event.clientY);
+      const row = target && target.closest('.stop-row');
+      if (!row || !els.stopsList.contains(row)) return;
+      els.stopsList.querySelectorAll('.drag-target').forEach(item => item.classList.remove('drag-target'));
+      row.classList.add('drag-target');
+      pointerDrag.destination = Number(row.dataset.index);
+    });
+    els.stopsList.addEventListener('pointerup', event => {
+      if (!pointerDrag || pointerDrag.pointerId !== event.pointerId) return;
+      const { source, destination } = pointerDrag;
+      clearPointerDrag();
+      reorderStop(source, destination);
+    });
+    els.stopsList.addEventListener('pointercancel', clearPointerDrag);
     els.stopsList.addEventListener('dragstart', event => {
       const handle = event.target.closest('[data-drag-handle]');
       const row = handle && handle.closest('.stop-row');
@@ -591,12 +749,19 @@
     els.stopsList.addEventListener('drop', event => {
       const row = event.target.closest('.stop-row'); if (!row || draggedIndex === null) return;
       event.preventDefault(); const destination = Number(row.dataset.index);
-      if (destination !== draggedIndex) { const [item] = state.stops.splice(draggedIndex, 1); state.stops.splice(destination, 0, item); }
-      draggedIndex = null; renderAll();
+      const source = draggedIndex;
+      draggedIndex = null;
+      reorderStop(source, destination);
     });
     els.stopsList.addEventListener('dragend', () => { draggedIndex = null; els.stopsList.querySelectorAll('.dragging,.drag-target').forEach(r => r.classList.remove('dragging', 'drag-target')); });
     els.addStopBtn.addEventListener('click', addStop);
-    els.reverseStopsBtn.addEventListener('click', () => { state.stops.reverse(); renderAll(); showToast('Odwrócono kolejność punktów.'); });
+    els.reverseStopsBtn.addEventListener('click', () => {
+      const oldIndexForNewIndex = state.stops.map((_, index) => state.stops.length - index - 1);
+      state.stops.reverse();
+      if (Array.isArray(state.stopLocations)) state.stopLocations.reverse();
+      renderStopChange(oldIndexForNewIndex);
+      showToast('Odwrócono kolejność punktów.');
+    });
     els.newRouteBtn.addEventListener('click', newRoute);
     els.saveRouteBtn.addEventListener('click', saveCurrentRoute);
     els.savedRoutes.addEventListener('change', () => { if (els.savedRoutes.value) loadSavedRoute(els.savedRoutes.value); });

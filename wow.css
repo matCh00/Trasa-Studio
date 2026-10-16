@@ -144,7 +144,8 @@ h1 span { color: transparent; background: linear-gradient(100deg,#a6a0ff 6%,#78d
 .import-dialog { border-color: rgba(151,172,220,.22); border-radius: 24px; color: #edf3ff; background: #10192b; box-shadow: 0 35px 100px rgba(0,0,0,.55); }
 .import-dialog::backdrop { background: rgba(3,7,15,.73); backdrop-filter: blur(8px); }
 .dialog-description { color: #98a8c6; }
-.dialog-close { color: #c6d1e8; }
+.dialog-close { border: 1px solid rgba(151,172,220,.16); color: #c6d1e8; background: rgba(255,255,255,.06); transition: color .18s ease,background .18s ease,border-color .18s ease,transform .18s ease; }
+.dialog-close:hover { border-color: rgba(113,228,242,.38); color: #72e2eb; background: rgba(113,228,242,.1); transform: rotate(90deg); }
 .toast { border-color: rgba(151,172,220,.2); color: #edf3ff; background: rgba(16,25,43,.94); box-shadow: 0 18px 55px rgba(0,0,0,.3); backdrop-filter: blur(20px); }
 .theme-toggle { display: inline-grid; place-items: center; min-width: 38px; min-height: 38px; border: 1px solid rgba(151,172,220,.2); border-radius: 12px; color: #c6d4f2; background: rgba(255,255,255,.035); cursor: pointer; transition: .2s ease; }
 .theme-toggle:hover { border-color: rgba(113,228,242,.48); color: var(--aurora-cyan); transform: translateY(-2px); }

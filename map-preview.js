@@ -1,7 +1,11 @@
 (() => {
   'use strict';
   const KEY_STORAGE = 'trasaStudio.mapsEmbedApiKey.v1';
+  const ROUTE_CACHE_STORAGE = 'trasaStudio.routePreviewCache.v1';
   const MAX_LOCATIONS_PER_REQUEST = 27; // Origin + up to 25 intermediate points + destination.
+  const MAX_ROUTE_CACHE_ENTRIES = 32;
+  const MAX_PERSISTED_CACHE_CHARS = 750000;
+  const ROUTE_DRAW_DEBOUNCE_MS = 800;
   const $ = (id) => document.getElementById(id);
   const keyInput = $('embedApiKeyInput');
   const saveKeyButton = $('saveEmbedApiKeyBtn');
@@ -21,6 +25,9 @@
   let activeKey = '';
   let apiLoadStarted = false;
   let drawSerial = 0;
+  let routesQuotaExhausted = false;
+  const stopMarkers = new Map();
+  const routeCache = new Map();
   let debounceTimer = 0;
   let toastTimer = 0;
   let overlays = [];
@@ -97,6 +104,17 @@
     return result;
   }
 
+  function stopLabel(index) {
+    let value = index + 1;
+    let label = '';
+    while (value > 0) {
+      value -= 1;
+      label = String.fromCharCode(65 + value % 26) + label;
+      value = Math.floor(value / 26);
+    }
+    return label;
+  }
+
   function clearOverlays() {
     overlays.forEach((overlay) => {
       try {
@@ -105,17 +123,228 @@
       } catch (_) { /* Ignore cleanup for overlays already removed by Maps. */ }
     });
     overlays = [];
+    stopMarkers.clear();
+  }
+
+  function markerContent(label) {
+    const pin = document.createElement('div');
+    pin.textContent = label;
+    Object.assign(pin.style, {
+      display: 'grid',
+      placeItems: 'center',
+      width: '24px',
+      height: '24px',
+      boxSizing: 'border-box',
+      border: '1.5px solid #ffffff',
+      borderRadius: '50%',
+      background: '#5b64ed',
+      color: '#ffffff',
+      font: '700 9px/1 "Segoe UI", Arial, sans-serif',
+      boxShadow: '0 1px 4px rgba(0,0,0,.55)',
+      whiteSpace: 'nowrap'
+    });
+    return pin;
+  }
+
+  function asLatLngLiteral(location) {
+    if (!location) return null;
+    const lat = typeof location.lat === 'function' ? location.lat() : location.lat;
+    const lng = typeof location.lng === 'function' ? location.lng() : location.lng;
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }
+
+  function routeLegLocation(leg, property, pathIndex) {
+    const directLocation = asLatLngLiteral(leg?.[property]);
+    if (directLocation) return directLocation;
+    const path = Array.isArray(leg?.path) ? leg.path : [];
+    return asLatLngLiteral(path[pathIndex < 0 ? path.length - 1 : pathIndex]);
+  }
+
+  function routeMarkerPositions(route) {
+    const legs = Array.isArray(route?.legs) ? route.legs : [];
+    if (!legs.length) return [];
+    const positions = [routeLegLocation(legs[0], 'startLocation', 0)];
+    legs.forEach((leg) => positions.push(routeLegLocation(leg, 'endLocation', -1)));
+    return positions;
+  }
+
+  function drawStopMarkers(positions, startIndex, stops, markerLibrary, bounds) {
+    positions.forEach((position, offset) => {
+      const index = startIndex + offset;
+      if (!position || index >= stops.length || stopMarkers.has(index)) return;
+      const marker = new markerLibrary.AdvancedMarkerElement({
+        map,
+        position,
+        title: `${stopLabel(index)} · ${stops[index]}`,
+        content: markerContent(stopLabel(index)),
+        collisionBehavior: google.maps.CollisionBehavior.REQUIRED,
+        zIndex: 1000 + index
+      });
+      stopMarkers.set(index, marker);
+      overlays.push(marker);
+      bounds.extend(position);
+    });
+  }
+
+  // RouteLegs are returned by Compute Routes and contain the snapped start/end
+  // position of every requested stop. This works with a JS demo key even where
+  // createWaypointAdvancedMarkers() is unavailable or yields no markers.
+  function drawRouteLegMarkers(route, startIndex, stops, markerLibrary, bounds) {
+    drawStopMarkers(routeMarkerPositions(route), startIndex, stops, markerLibrary, bounds);
+  }
+
+  function routeCacheKey(mode, chunk) {
+    return JSON.stringify([mode, chunk]);
+  }
+
+  function snapshotRoute(route) {
+    const path = Array.isArray(route?.path) ? route.path.map(asLatLngLiteral).filter(Boolean) : [];
+    const positions = routeMarkerPositions(route);
+    if (!path.length && !positions.some(Boolean)) return null;
+    return { path, positions };
+  }
+
+  function trimRouteCache() {
+    while (routeCache.size > MAX_ROUTE_CACHE_ENTRIES) routeCache.delete(routeCache.keys().next().value);
+  }
+
+  function persistRouteCache() {
+    try {
+      const records = Array.from(routeCache.entries())
+        .filter(([, entry]) => entry.snapshot)
+        .map(([key, entry]) => ({ key, snapshot: entry.snapshot }));
+      while (records.length && JSON.stringify(records).length > MAX_PERSISTED_CACHE_CHARS) records.shift();
+      sessionStorage.setItem(ROUTE_CACHE_STORAGE, JSON.stringify(records));
+    } catch (_) { /* Cache is an optimization; storage can be unavailable or full. */ }
+  }
+
+  function restoreRouteCache() {
+    try {
+      const records = JSON.parse(sessionStorage.getItem(ROUTE_CACHE_STORAGE) || '[]');
+      if (!Array.isArray(records)) return;
+      records.forEach((record) => {
+        if (!record || typeof record.key !== 'string' || !record.snapshot
+          || !Array.isArray(record.snapshot.path) || !Array.isArray(record.snapshot.positions)) return;
+        routeCache.set(record.key, { snapshot: record.snapshot });
+      });
+      trimRouteCache();
+    } catch (_) { /* Ignore an invalid or unavailable session cache. */ }
+  }
+
+  function cacheRoute(key, route) {
+    routeCache.delete(key);
+    routeCache.set(key, { route, snapshot: snapshotRoute(route) });
+    trimRouteCache();
+    persistRouteCache();
+  }
+
+  function cachedRoute(key) {
+    const entry = routeCache.get(key);
+    if (!entry) return null;
+    routeCache.delete(key);
+    routeCache.set(key, entry); // LRU: frequently used route segments stay cached.
+    return entry;
+  }
+
+  function drawRouteDots(path) {
+    const positions = Array.isArray(path) ? path.map(asLatLngLiteral).filter(Boolean) : [];
+    if (positions.length < 2) return;
+    const dots = new google.maps.Polyline({
+      path: positions,
+      strokeOpacity: 0,
+      icons: [{
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 2.5,
+          fillColor: '#4c55e6',
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeOpacity: 1,
+          strokeWeight: 1.35
+        },
+        offset: '0',
+        repeat: '18px'
+      }],
+      zIndex: 2
+    });
+    dots.setMap(map);
+    overlays.push(dots);
+  }
+
+  function drawCachedRoute(snapshot, startIndex, stops, markerLibrary, bounds) {
+    if (snapshot.path.length > 1) {
+      const line = new google.maps.Polyline({
+        path: snapshot.path,
+        strokeColor: '#5b64ed',
+        strokeOpacity: 0.65,
+        strokeWeight: 5,
+        zIndex: 1
+      });
+      line.setMap(map);
+      overlays.push(line);
+      snapshot.path.forEach((point) => bounds.extend(point));
+    }
+    drawRouteDots(snapshot.path);
+    drawStopMarkers(snapshot.positions, startIndex, stops, markerLibrary, bounds);
+  }
+
+  function drawComputedRoute(route, startIndex, stops, markerLibrary, bounds) {
+    const polylines = route.createPolylines({
+      polylineOptions: { strokeColor: '#5b64ed', strokeOpacity: 0.65, strokeWeight: 5, zIndex: 1 }
+    });
+    polylines.forEach((line) => { line.setMap(map); overlays.push(line); });
+    drawRouteDots(route.path);
+    drawRouteLegMarkers(route, startIndex, stops, markerLibrary, bounds);
+    if (route.viewport) {
+      bounds.union(route.viewport);
+    } else if (Array.isArray(route.path)) {
+      route.path.forEach((point) => {
+        const position = asLatLngLiteral(point);
+        if (position) bounds.extend(position);
+      });
+    }
+  }
+
+  // This fallback only uses coordinates already saved with the route. A Maps
+  // JavaScript demo key cannot be used to make Geocoding API requests.
+  async function drawFallbackMarkers(stops, startIndex, locations, markerLibrary, bounds, serial, unresolved) {
+    for (let offset = 0; offset < stops.length; offset += 1) {
+      const index = startIndex + offset;
+      if (stopMarkers.has(index)) continue;
+      try {
+        const position = locations[index];
+        if (!position || !Number.isFinite(position.lat) || !Number.isFinite(position.lng)) {
+          unresolved.push({ label: stopLabel(index), reason: 'brak współrzędnych w imporcie' });
+          continue;
+        }
+        const marker = new markerLibrary.AdvancedMarkerElement({
+          map,
+          position,
+          title: `${stopLabel(index)} · ${stops[offset]}`,
+          content: markerContent(stopLabel(index)),
+          collisionBehavior: google.maps.CollisionBehavior.REQUIRED,
+          zIndex: 1000 + index
+        });
+        stopMarkers.set(index, marker);
+        overlays.push(marker);
+        bounds.extend(position);
+      } catch (error) {
+        if (serial !== drawSerial) return;
+        const reason = error?.message || String(error);
+        unresolved.push({ label: stopLabel(index), reason });
+      }
+    }
   }
 
   async function drawRoute(force = false) {
-    if (!map || !Route) return;
+    if (!map) return;
     const stops = stopsFromEditor();
     const mode = selectedTravelMode();
-    if (stops.length < 2 || stops.some((stop) => !stop)) {
+    if (stops.length === 0 || stops.some((stop) => !stop)) {
       ++drawSerial;
       clearOverlays();
       lastSignature = '';
-      setStatus(stops.length < 2 ? 'Dodaj przynajmniej dwa punkty.' : 'Uzupełnij puste pola punktów.', 'i');
+      setStatus(stops.length === 0 ? 'Dodaj przynajmniej jeden punkt.' : 'Uzupełnij puste pola punktów.', 'i');
       setPlaceholder('Uzupełnij punkty trasy', 'Wpisz przynajmniej dwa kompletne adresy, aby narysować przebieg trasy.');
       return;
     }
@@ -126,16 +355,55 @@
     const mySerial = ++drawSerial;
     clearOverlays();
     clearWarning();
-    setPlaceholder('Wyznaczanie przebiegu…', 'Google Maps oblicza trasę według kolejności na liście.');
-    setStatus(`Wyznaczanie trasy dla ${stops.length} punktów…`, '↻');
+    setPlaceholder('Dodawanie punktów do mapy…', 'Markery są tworzone z odpowiedzi Compute Routes; podgląd nie używa Geocoding API.');
+    setStatus(`Dodawanie ${stops.length} punktów do mapy…`, '↻');
     const chunks = splitRoute(stops);
     const bounds = new google.maps.LatLngBounds();
-    let boundsHaveData = false;
+    const routeFailures = [];
+    const unresolved = [];
+    let successfulChunks = 0;
+    let cachedChunks = 0;
+    let chunkStartIndex = 0;
 
     try {
+      const markerLibrary = await google.maps.importLibrary('marker');
+      if (mySerial !== drawSerial) return;
+      let locations = [];
+      try {
+        locations = JSON.parse($('stopsList').dataset.stopLocations || '[]');
+      } catch (error) {
+        showWarning(`Nie udało się odczytać zapisanych współrzędnych punktów: ${error.message}`, true);
+      }
+      setPlaceholder('', '', false);
+
       for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
         if (mySerial !== drawSerial) return;
         const chunk = chunks[chunkIndex];
+        const cacheKey = routeCacheKey(mode, chunk);
+        const cached = cachedRoute(cacheKey);
+        if (cached) {
+          try {
+            if (cached.route) drawComputedRoute(cached.route, chunkStartIndex, stops, markerLibrary, bounds);
+            else drawCachedRoute(cached.snapshot, chunkStartIndex, stops, markerLibrary, bounds);
+            successfulChunks += 1;
+            cachedChunks += 1;
+          } catch (error) {
+            // A cached rendering object can become invalid when Maps reloads; fetch it once more below.
+            routeCache.delete(cacheKey);
+          }
+          if (routeCache.has(cacheKey)) {
+            chunkStartIndex += chunk.length - 1;
+            continue;
+          }
+        }
+        if (!Route) {
+          chunkStartIndex += chunk.length - 1;
+          continue;
+        }
+        if (routesQuotaExhausted) {
+          chunkStartIndex += chunk.length - 1;
+          continue;
+        }
         const request = {
           origin: chunk[0],
           destination: chunk[chunk.length - 1],
@@ -143,67 +411,70 @@
           fields: ['path', 'legs', 'viewport']
         };
         if (chunk.length > 2) request.intermediates = chunk.slice(1, -1).map((address) => ({ location: address }));
-        const response = await Route.computeRoutes(request);
-        if (mySerial !== drawSerial) return;
-        const route = response?.routes?.[0];
-        if (!route) throw new Error(`Google nie zwróciło przebiegu odcinka ${chunkIndex + 1}.`);
-
-        const polylines = route.createPolylines({
-          polylineOptions: { strokeColor: '#5b64ed', strokeOpacity: 0.94, strokeWeight: 5 }
-        });
-        polylines.forEach((line) => { line.setMap(map); overlays.push(line); });
-
-        if (route.viewport) {
-          bounds.union(route.viewport);
-          boundsHaveData = true;
-        } else if (Array.isArray(route.path)) {
-          route.path.forEach((point) => {
-            const lat = typeof point.lat === 'function' ? point.lat() : point.lat;
-            const lng = typeof point.lng === 'function' ? point.lng() : point.lng;
-            if (Number.isFinite(lat) && Number.isFinite(lng)) bounds.extend({ lat, lng });
-          });
-          boundsHaveData = true;
+        try {
+          const response = await Route.computeRoutes(request);
+          if (mySerial !== drawSerial) return;
+          const route = response?.routes?.[0];
+          if (!route) throw new Error(`Google nie zwróciło przebiegu odcinka ${chunkIndex + 1}.`);
+          cacheRoute(cacheKey, route);
+          drawComputedRoute(route, chunkStartIndex, stops, markerLibrary, bounds);
+          successfulChunks += 1;
+        } catch (error) {
+          if (mySerial !== drawSerial) return;
+          const reason = error?.message || String(error);
+          if (/RESOURCE_EXHAUSTED|QUOTA_EXCEEDED|quota exceeded/i.test(reason)) {
+            routesQuotaExhausted = true;
+            routeFailures.push(`limit dzienny Routes API został wyczerpany (odcinek ${chunkIndex + 1})`);
+          } else {
+            routeFailures.push(`odcinek ${chunkIndex + 1}: ${reason}`);
+          }
         }
-
-        if (typeof route.createWaypointAdvancedMarkers === 'function') {
-          const markers = await route.createWaypointAdvancedMarkers();
-          markers.forEach((marker, markerIndex) => {
-            if (chunkIndex > 0 && markerIndex === 0) {
-              marker.map = null; // Hide the duplicated shared boundary point.
-              return;
-            }
-            marker.map = map;
-            overlays.push(marker);
-          });
-        }
+        chunkStartIndex += chunk.length - 1;
       }
       if (mySerial !== drawSerial) return;
-      setPlaceholder('', '', false);
-      if (boundsHaveData && !bounds.isEmpty()) map.fitBounds(bounds, 48);
-      setStatus(`${stops.length} punktów · ${chunks.length} odc. · kolejność zachowana`, '✓');
-      if (chunks.length > 1) {
-        showWarning(`Podgląd rysuje całą trasę w ${chunks.length} odcinkach ze wspólnymi punktami granicznymi. Kolejność wszystkich ${stops.length} przystanków została zachowana.`);
+      if (!Route && chunks.length) routeFailures.push('obliczanie przebiegu trasy jest niedostępne');
+      await drawFallbackMarkers(stops, 0, locations, markerLibrary, bounds, mySerial, unresolved);
+      if (mySerial !== drawSerial) return;
+      const locatedCount = stopMarkers.size;
+      if (!bounds.isEmpty()) map.fitBounds(bounds, 48);
+      setStatus(`${locatedCount}/${stops.length} punktów na mapie · ${successfulChunks}/${chunks.length} odc. trasy${cachedChunks ? ` · ${cachedChunks} z cache` : ''}`, locatedCount === stops.length ? '✓' : '!');
+      if (locatedCount === 0 && successfulChunks === 0) {
+        setPlaceholder('Nie udało się wyświetlić punktów', 'Sprawdź adresy i klucz Maps. Trasa nie została narysowana.');
+      }
+
+      const warnings = [];
+      if (routeFailures.length) {
+        warnings.push(`Nie udało się narysować ${routeFailures.length} odc. trasy (${routeFailures.join('; ')}).`);
+      }
+      if (unresolved.length) {
+        const missingImportedCoordinates = unresolved.every(point => point.reason === 'brak współrzędnych w imporcie');
+        warnings.push(missingImportedCoordinates
+          ? `Nie udało się wyświetlić ${unresolved.length} punktów, ponieważ import nie zawiera ich współrzędnych, a odpowiedź Compute Routes nie utworzyła markerów. Podgląd celowo nie korzysta z Geocoding API.`
+          : `Nie udało się znaleźć lokalizacji ${unresolved.length} punktów: ${unresolved.map(point => `${point.label} (${point.reason})`).join('; ')}.`);
+      }
+      if (warnings.length) {
+        showWarning(`${warnings.join(' ')} Pozostałe rozpoznane punkty są widoczne na mapie.`, true);
+      } else if (chunks.length > 1) {
+        showWarning(`Trasa jest rysowana w ${chunks.length} odcinkach ze wspólnymi punktami granicznymi. Wszystkie ${locatedCount} rozpoznane punkty są widoczne na mapie.`);
       } else {
         clearWarning();
       }
     } catch (error) {
       if (mySerial !== drawSerial) return;
-      setPlaceholder('', '', false);
-      setStatus('Mapa działa; obliczenie trasy się nie powiodło.', '!');
-      showWarning(`Nie udało się wyznaczyć trasy: ${error?.message || String(error)}. Mapa pozostaje dostępna. Sprawdź, czy adresy punktów są rozpoznawalne oraz czy dzienny limit Demo Key nie został wykorzystany.`, true);
+      setPlaceholder('Nie udało się przygotować mapy punktów', `Sprawdź klucz Maps. ${error?.message || String(error)}`);
+      setStatus('Nie udało się wyświetlić punktów.', '!');
+      showWarning(`Nie udało się umieścić punktów na mapie: ${error?.message || String(error)}.`, true);
     }
   }
 
   function scheduleDraw(force = true) {
     window.clearTimeout(debounceTimer);
-    debounceTimer = window.setTimeout(() => drawRoute(force), 420);
+    debounceTimer = window.setTimeout(() => drawRoute(force), ROUTE_DRAW_DEBOUNCE_MS);
   }
 
   async function initializeMap() {
     try {
       const mapsLib = await google.maps.importLibrary('maps');
-      const routesLib = await google.maps.importLibrary('routes');
-      Route = routesLib.Route;
       map = new mapsLib.Map(mapCanvas, {
         center: { lat: 52.5200, lng: 13.4050 },
         zoom: 12,
@@ -212,6 +483,13 @@
         streetViewControl: false,
         fullscreenControl: true
       });
+      try {
+        const routesLib = await google.maps.importLibrary('routes');
+        Route = routesLib.Route;
+      } catch (error) {
+        Route = null;
+        showWarning(`Nie udało się włączyć rysowania przebiegu trasy: ${error?.message || String(error)}. Punkty nadal będą dodawane do mapy.`);
+      }
       if (window.google?.maps?.event) google.maps.event.addListenerOnce(map, 'idle', () => scheduleDraw(true));
       await drawRoute(true);
     } catch (error) {
@@ -294,6 +572,7 @@
   }, true);
 
   document.addEventListener('DOMContentLoaded', () => {
+    restoreRouteCache();
     const stopsList = $('stopsList');
     if (stopsList) {
       stopsList.addEventListener('input', () => scheduleDraw(true));
